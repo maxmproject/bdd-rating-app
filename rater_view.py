@@ -7,7 +7,7 @@ import numpy as np
 import streamlit as st
 
 import db
-from config import CATS, CRITERIA, INSIGHT, ORDER_SEED
+from config import CATS, CRITERIA, INSIGHT, ORDER_SEED, TEST_RATERS
 
 
 def rater_order(vids: list[str], rater: str) -> list[str]:
@@ -24,6 +24,12 @@ def render(eng, user: dict):
     if vdf.empty:
         st.info("ยังไม่มี vignette ให้ประเมิน กรุณารอ PI นำเข้าข้อมูล")
         return
+    if rater in TEST_RATERS:          # test accounts see only their assigned subset
+        assigned = set(db.ensure_test_assignment(eng, rater))
+        vdf = vdf[vdf.vid.isin(assigned)]
+        if vdf.empty:
+            st.info("PI ยังไม่ได้กำหนดชุด vignette สำหรับบัญชีทดสอบนี้")
+            return
     texts = dict(zip(vdf.vid, vdf.text))
     order = rater_order(list(texts), rater)
     ratings = db.get_ratings(eng, rater)

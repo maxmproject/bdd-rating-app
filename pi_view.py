@@ -105,16 +105,43 @@ def _progress_tab(eng, user, d, m):
     st.divider()
     st.markdown("**🧪 บัญชีทดสอบ** (ไม่นำไปรวมกับข้อมูลจริง)")
     rat = d["rat"]
+    sets = {r: db.ensure_test_assignment(eng, r) for r in TEST_RATERS}
     tcols = st.columns(len(TEST_RATERS) + 1)
     for c, r in zip(tcols, TEST_RATERS):
-        n = int((rat.rater == r).sum()) if not rat.empty else 0
-        c.metric(f"Test {r}", f"{n} / {len(m)}")
+        n = int(((rat.rater == r) & rat.vid.isin(sets[r])).sum()) if not rat.empty else 0
+        c.metric(f"Test {r}", f"{n} / {len(sets[r])}")
         c.caption("🔒 lock แล้ว" if locks.get(r) else "ยังไม่ lock")
     with tcols[-1]:
         ok = st.checkbox("ยืนยันล้างผลของบัญชีทดสอบทั้งหมด", key="confirm_clear_test")
         if st.button("ล้างข้อมูลทดสอบ", disabled=not ok):
             n = db.clear_ratings_of(eng, TEST_RATERS, user["username"])
             st.success(f"ลบผลทดสอบ {n} รายการ และปลด lock แล้ว (สำเนาอยู่ใน audit log)")
+            st.rerun()
+    _test_sets_editor(eng, user, m, sets)
+
+
+def _test_sets_editor(eng, user, m, sets):
+    with st.expander("ชุด vignette ของบัญชีทดสอบ (คนละ domain)"):
+        bp = m.set_index("vid")
+        for r in TEST_RATERS:
+            v = [x for x in sets[r] if x in bp.index]
+            t = bp.loc[v, ["area", "cls"]].reset_index() if v else pd.DataFrame()
+            st.markdown(f"**{r}** · {len(v)} เรื่อง")
+            if not t.empty:
+                st.dataframe(t.groupby(["area", "cls"]).size().rename("n").reset_index(),
+                             hide_index=True)
+            new = st.multiselect(f"แก้ชุดของ {r}", m.vid.tolist(), default=v, key=f"set_{r}")
+            if st.button(f"บันทึกชุดของ {r}", key=f"save_set_{r}", disabled=sorted(new) == v):
+                db.set_assignment(eng, r, new, user["username"])
+                st.rerun()
+        overlap = set(sets[TEST_RATERS[0]]) & set(sets[TEST_RATERS[1]])
+        st.caption(f"เรื่องที่ซ้ำกันระหว่าง T1 และ T2: {len(overlap)} "
+                   "(ถ้าไม่มีเรื่องซ้ำ จะคำนวณ κ ของ T1 vs T2 ไม่ได้)")
+        seed = st.number_input("seed สำหรับสุ่มชุดใหม่", value=20261122, step=1)
+        if st.button("สุ่มชุดใหม่ตาม domain เริ่มต้น"):
+            from test_sets import default_sets
+            for r, vids in default_sets(db.test_pool(eng), int(seed)).items():
+                db.set_assignment(eng, r, vids, user["username"])
             st.rerun()
 
 
