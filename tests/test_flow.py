@@ -79,3 +79,26 @@ def test_full_flow(eng):
     wb = openpyxl.load_workbook(io.BytesIO(x))
     assert {"Summary", "Agreement", "Rater_A", "Rater_B", "Kappa",
             "Blueprint_check", "Audit_log"} <= set(wb.sheetnames)
+
+
+def test_test_accounts_isolated(eng):
+    v = _vigs(6)
+    db.upsert_vignettes(eng, v, "pi")
+    rate = dict(crit_a=True, crit_b=True, crit_c=True, crit_d=True, label="BDD",
+                insight="poor", confidence=3, note="")
+    for r in ("A", "T1", "T2"):
+        for vid in v.vid[:3]:
+            db.save_rating(eng, r, vid, rate, r)
+    db.save_consensus(eng, "V-001", "pi", label="Non-BDD", include=True)
+    d = analysis.load_all(eng)
+    real = analysis.merged(d)
+    assert real.label_A.notna().sum() == 3 and real.label_B.isna().all()   # T1/T2 not in real
+    test = analysis.merged(d, ("T1", "T2"))
+    assert test.both_rated.sum() == 3
+    assert (test.cons_label == "").all() and not test.include.any()     # no consensus leak
+    x = analysis.build_export(eng, 50)
+    wb = openpyxl.load_workbook(io.BytesIO(x))
+    assert wb["Rater_B"].cell(2, 7).value is None                         # Rater_B empty
+    db.set_lock(eng, "T1", True, "T1")
+    assert db.clear_ratings_of(eng, ["T1", "T2"], "pi") == 6
+    assert not db.is_locked(eng, "T1") and db.get_ratings(eng, "A")

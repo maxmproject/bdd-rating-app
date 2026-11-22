@@ -26,17 +26,20 @@ def load_all(eng) -> dict[str, pd.DataFrame]:
     }
 
 
-def merged(d: dict) -> pd.DataFrame:
-    """One row per active vignette: A/B ratings, agreement, consensus, final label."""
+def merged(d: dict, pair: tuple[str, str] = ("A", "B")) -> pd.DataFrame:
+    """One row per active vignette: ratings of `pair` (columns suffixed _A/_B), agreement,
+    consensus, final label. Consensus/include are only joined for the real pair (A, B);
+    a test pair (T1, T2) gets an empty consensus so test data can never leak into results."""
     vig = d["vig"][d["vig"].active] if not d["vig"].empty else d["vig"]
     m = vig[["vid", "set_role", "text"]].merge(d["bp"], on="vid", how="left")
-    for r in ("A", "B"):
+    for col, r in zip(("A", "B"), pair):
         rr = d["rat"][d["rat"].rater == r][RATER_COLS] if not d["rat"].empty \
             else pd.DataFrame(columns=RATER_COLS)
-        rr = rr.rename(columns={c: f"{c}_{r}" for c in RATER_COLS if c != "vid"})
+        rr = rr.rename(columns={c: f"{c}_{col}" for c in RATER_COLS if c != "vid"})
         m = m.merge(rr, on="vid", how="left")
+    real = tuple(pair) == ("A", "B")
     cons = d["cons"].rename(columns={"label": "cons_label", "note": "cons_note",
-                                     "updated_at": "cons_at"}) if not d["cons"].empty \
+                                     "updated_at": "cons_at"}) if (real and not d["cons"].empty) \
         else pd.DataFrame(columns=["vid", "cons_label", "cons_note", "include", "cons_at"])
     m = m.merge(cons, on="vid", how="left")
     m["include"] = m["include"].fillna(False).astype(bool)

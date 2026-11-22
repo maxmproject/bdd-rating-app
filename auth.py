@@ -23,8 +23,29 @@ def make_hash(password: str, iterations: int = ITER) -> str:
     return f"pbkdf2_sha256${iterations}${salt}${base64.b64encode(dk).decode()}"
 
 
+def hash_problem(stored) -> str:
+    """'' if the stored hash looks well-formed, else a short reason (never reveals the hash)."""
+    if not isinstance(stored, str) or not stored.strip():
+        return "ไม่มี password_hash"
+    s = stored.strip()
+    parts = s.split("$")
+    if len(parts) != 4:
+        return f"ต้องมี 4 ส่วนคั่นด้วย $ (พบ {len(parts)})"
+    if parts[0] != "pbkdf2_sha256":
+        return "ต้องขึ้นต้นด้วย pbkdf2_sha256"
+    if not parts[1].isdigit():
+        return "จำนวนรอบ (iterations) ไม่ใช่ตัวเลข"
+    try:
+        if len(base64.b64decode(parts[3], validate=True)) != 32:
+            return "ความยาว hash ไม่ใช่ 32 bytes"
+    except Exception:  # noqa: BLE001
+        return "ส่วน hash ไม่ใช่ base64"
+    return ""
+
+
 def verify(password: str, stored: str) -> bool:
     try:
+        stored = stored.strip()   # tolerate spaces/newlines pasted into secrets
         algo, it, salt, h = stored.split("$")
         assert algo == "pbkdf2_sha256"
         dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), int(it))
