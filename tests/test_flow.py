@@ -102,3 +102,15 @@ def test_test_accounts_isolated(eng):
     db.set_lock(eng, "T1", True, "T1")
     assert db.clear_ratings_of(eng, ["T1", "T2"], "pi") == 6
     assert not db.is_locked(eng, "T1") and db.get_ratings(eng, "A")
+
+
+def test_schema_added_after_reload(tmp_path):
+    """Simulate a redeploy: engine (cached) existed before a new table was added."""
+    from sqlalchemy import inspect
+    eng = db.get_engine(f"sqlite:///{tmp_path/'r.db'}")
+    db.TestAssignment.__table__.drop(eng)
+    assert "test_assignment" not in inspect(eng).get_table_names()
+    db._SCHEMA_OK.clear()                     # what a module reload does
+    db.ensure_schema(eng)
+    assert "test_assignment" in inspect(eng).get_table_names()
+    assert db.get_assignment(eng, "T1") == []

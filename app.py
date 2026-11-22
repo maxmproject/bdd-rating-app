@@ -50,8 +50,13 @@ if "_reported" not in st.session_state:
 
 
 @st.cache_resource
-def engine(url: str):
+def _cached_engine(url: str):
     return db.get_engine(url)
+
+
+def engine(url: str):
+    # the cached engine outlives code reloads; make sure new tables exist after a redeploy
+    return db.ensure_schema(_cached_engine(url))
 
 
 def login():
