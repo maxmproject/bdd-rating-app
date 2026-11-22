@@ -94,15 +94,25 @@ class Audit(Base):
 
 
 _ENGINES: dict[str, object] = {}
+# engines whose schema matches *this* module's models. Module-level, so it is reset
+# whenever Streamlit reloads db.py after a redeploy, while a st.cache_resource engine
+# survives; ensure_schema() then adds any new tables (e.g. test_assignment).
+_SCHEMA_OK: set[int] = set()
+
+
+def ensure_schema(eng):
+    """Idempotent CREATE TABLE IF NOT EXISTS for all models; cheap after the first call."""
+    if id(eng) not in _SCHEMA_OK:
+        Base.metadata.create_all(eng)
+        _SCHEMA_OK.add(id(eng))
+    return eng
 
 
 def get_engine(url: str | None = None):
     url = url or os.environ.get("DATABASE_URL") or "sqlite:///rating.db"
     if url not in _ENGINES:
-        eng = create_engine(url, pool_pre_ping=True, future=True)
-        Base.metadata.create_all(eng)
-        _ENGINES[url] = eng
-    return _ENGINES[url]
+        _ENGINES[url] = create_engine(url, pool_pre_ping=True, future=True)
+    return ensure_schema(_ENGINES[url])
 
 
 def log(s: Session, user: str, action: str, detail: dict | str = ""):
