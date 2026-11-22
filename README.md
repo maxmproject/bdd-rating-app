@@ -1,4 +1,4 @@
-# BDD Vignette Rating App (V1 · 2026-11-22)
+# BDD Vignette Rating App (V1.1 · 2026-11-22)
 
 Web app ให้จิตแพทย์ 2 คน label vignette สังเคราะห์แบบ blind และแยกกันตามเกณฑ์ DSM-5-TR A–D
 แทนชีต Rater_A / Rater_B / Kappa ใน `BDD_vignette_templates_20261122_V1_claude.xlsx`
@@ -9,6 +9,10 @@ Web app ให้จิตแพทย์ 2 คน label vignette สังเ�
 |---|---|
 | `rater` (A, B) | ID + ข้อความ vignette เท่านั้น (ไม่เห็น class/stratum/ผลของอีกคน) · ลำดับสุ่มแยกต่อคน (seed คงที่) · แก้ได้จน lock |
 | `pi` | นำเข้า vignette, ความคืบหน้า, κ + 95% CI, consensus, เลือกชุด 150, export Excel |
+| `rater` (T1, T2) · บัญชีทดสอบ | เหมือน rater จริง แต่ผลเก็บแยก (rater code T1/T2) ไม่ถูกนำไปคำนวณ κ, consensus หรือ export · PI ดู κ ของ T1 vs T2 ได้ในแท็บ Agreement (โหมดทดสอบ) และกด "ล้างข้อมูลทดสอบ" ในแท็บความคืบหน้า |
+
+
+ใช้งานจริง 5 บัญชี: `pi`, `rater_a`, `rater_b` (ข้อมูลจริง) + `test1`, `test2` (ทดสอบ) — ดู `.streamlit/secrets.toml.example`
 
 Blinding ทำฝั่ง server: หน้า rater ดึงข้อมูลผ่าน `db.vignettes_for_rater()` ซึ่งคืนแค่ `vid, text`
 

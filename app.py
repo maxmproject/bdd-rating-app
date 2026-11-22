@@ -13,7 +13,7 @@ import db
 import pi_view
 import rater_view
 from auth import verify
-from config import APP_DATE, APP_VERSION
+from config import APP_DATE, APP_VERSION, RATERS, TEST_RATERS
 
 st.set_page_config(page_title="BDD Vignette Rating", page_icon="📝", layout="wide")
 
@@ -73,8 +73,11 @@ def main():
     if user["role"] == "pi":
         st.title("หน้า PI")
         pi_view.render(eng, user)
-    elif user["role"] == "rater" and user.get("rater") in ("A", "B"):
+    elif user["role"] == "rater" and user.get("rater") in RATERS + TEST_RATERS:
         st.title("แบบประเมิน vignette · DSM-5-TR")
+        if user["rater"] in TEST_RATERS:
+            st.info(f"🧪 บัญชีทดสอบ ({user['rater']}): ผลที่บันทึกแยกจากข้อมูลจริง "
+                    "ไม่ถูกนำไปคำนวณ κ, consensus หรือ export")
         st.caption("ประเมินแยกกัน ไม่ปรึกษาผู้ประเมินอีกคนจนกว่าจะส่งครบ")
         rater_view.render(eng, user)
     else:

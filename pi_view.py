@@ -8,7 +8,7 @@ import streamlit as st
 
 import analysis
 import db
-from config import BP_COLS, CATS2, CRITERIA, RATERS, TARGET_PER_CLASS
+from config import BP_COLS, CATS2, CRITERIA, RATERS, TARGET_PER_CLASS, TEST_RATERS
 
 
 def render(eng, user: dict):
@@ -21,7 +21,7 @@ def render(eng, user: dict):
     with tabs[1]:
         _progress_tab(eng, user, d, m)
     with tabs[2]:
-        _agreement_tab(m)
+        _agreement_tab(d, m)
     with tabs[3]:
         _consensus_tab(eng, user, m)
     with tabs[4]:
@@ -101,13 +101,36 @@ def _progress_tab(eng, user, d, m):
                 st.rerun()
     st.caption("PI เห็นจำนวนได้ แต่ผู้ประเมินแต่ละคนเห็นเฉพาะผลของตนเอง")
 
+    # ---- test accounts (kept out of κ / consensus / export) ----
+    st.divider()
+    st.markdown("**🧪 บัญชีทดสอบ** (ไม่นำไปรวมกับข้อมูลจริง)")
+    rat = d["rat"]
+    tcols = st.columns(len(TEST_RATERS) + 1)
+    for c, r in zip(tcols, TEST_RATERS):
+        n = int((rat.rater == r).sum()) if not rat.empty else 0
+        c.metric(f"Test {r}", f"{n} / {len(m)}")
+        c.caption("🔒 lock แล้ว" if locks.get(r) else "ยังไม่ lock")
+    with tcols[-1]:
+        ok = st.checkbox("ยืนยันล้างผลของบัญชีทดสอบทั้งหมด", key="confirm_clear_test")
+        if st.button("ล้างข้อมูลทดสอบ", disabled=not ok):
+            n = db.clear_ratings_of(eng, TEST_RATERS, user["username"])
+            st.success(f"ลบผลทดสอบ {n} รายการ และปลด lock แล้ว (สำเนาอยู่ใน audit log)")
+            st.rerun()
+
 
 # ---------------------------------------------------------------- 3 agreement
 def _fmt(x, nd=3):
     return "" if x is None or pd.isna(x) else f"{x:.{nd}f}"
 
 
-def _agreement_tab(m):
+def _agreement_tab(d, m):
+    mode = st.radio("ชุดข้อมูล", ["ใช้จริง (A vs B)", "🧪 ทดสอบ (T1 vs T2)"], horizontal=True)
+    if mode.startswith("🧪"):
+        if m.empty:
+            st.info("ยังไม่มี vignette")
+            return
+        m = analysis.merged(d, tuple(TEST_RATERS))
+        st.caption("ผลจากบัญชีทดสอบ ใช้ตรวจว่าระบบทำงานถูกต้องเท่านั้น ไม่ถูก export")
     if m.empty or not m.both_rated.any():
         st.info("ยังไม่มีเรื่องที่ประเมินครบทั้งสองคน")
         return

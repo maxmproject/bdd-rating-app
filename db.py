@@ -227,3 +227,19 @@ def reset_ratings(eng, vids: list[str], user: str, reason: str = ""):
         log(s, user, "reset_ratings", {"vids": vids, "reason": reason, "old": old})
         s.commit()
     return len(old)
+
+
+def clear_ratings_of(eng, raters: list[str], user: str):
+    """Delete all ratings + lock of the given (test) raters. Copies kept in audit log."""
+    with Session(eng) as s:
+        objs = s.scalars(select(Rating).where(Rating.rater.in_(raters))).all()
+        old = [{c.name: getattr(o, c.name) for c in Rating.__table__.columns} for o in objs]
+        for o in objs:
+            s.delete(o)
+        for r in raters:
+            st_ = s.get(RaterStatus, r)
+            if st_:
+                st_.locked, st_.locked_at = False, None
+        log(s, user, "clear_test_data", {"raters": raters, "old": old})
+        s.commit()
+    return len(old)

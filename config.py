@@ -1,12 +1,13 @@
 """Shared constants (match Rater_A/B sheets in BDD_vignette_templates_20261122_V1_claude.xlsx)."""
 
-APP_VERSION = "V1"
+APP_VERSION = "V1.1"
 APP_DATE = "2026-11-22"
 
 CATS = ["BDD", "Non-BDD", "ข้อมูลไม่พอ"]
 CATS2 = ["BDD", "Non-BDD"]
 INSIGHT = ["good/fair", "poor", "absent/delusional"]
-RATERS = ["A", "B"]
+RATERS = ["A", "B"]          # real raters: the only data used for κ, consensus, export
+TEST_RATERS = ["T1", "T2"]   # test accounts: stored separately (rater code), never mixed with A/B
 ORDER_SEED = 20261122
 TARGET_PER_CLASS = 75
 
