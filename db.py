@@ -77,6 +77,13 @@ class Consensus(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class TestAssignment(Base):
+    """Which vignettes a test account (T1/T2) sees. Real raters always see all active ones."""
+    __tablename__ = "test_assignment"
+    rater: Mapped[str] = mapped_column(String(10), primary_key=True)
+    vid: Mapped[str] = mapped_column(String(20), primary_key=True)
+
+
 class Audit(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -243,3 +250,45 @@ def clear_ratings_of(eng, raters: list[str], user: str):
         log(s, user, "clear_test_data", {"raters": raters, "old": old})
         s.commit()
     return len(old)
+
+
+def get_assignment(eng, rater: str) -> list[str]:
+    with Session(eng) as s:
+        return sorted(s.scalars(select(TestAssignment.vid)
+                                .where(TestAssignment.rater == rater)).all())
+
+
+def set_assignment(eng, rater: str, vids: list[str], user: str):
+    with Session(eng) as s:
+        for o in s.scalars(select(TestAssignment).where(TestAssignment.rater == rater)).all():
+            s.delete(o)
+        s.flush()
+        for v in sorted(set(vids)):
+            s.add(TestAssignment(rater=rater, vid=v))
+        log(s, user, "set_test_assignment", {"rater": rater, "vids": sorted(set(vids))})
+        s.commit()
+
+
+def test_pool(eng) -> "pd.DataFrame":
+    """Active vignettes with area/class, for building test subsets (PI side only)."""
+    with Session(eng) as s:
+        rows = s.execute(select(Vignette.vid, Blueprint.area, Blueprint.cls)
+                         .join(Blueprint, Blueprint.vid == Vignette.vid)
+                         .where(Vignette.active.is_(True))).all()
+    return pd.DataFrame(rows, columns=["vid", "area", "cls"])
+
+
+def ensure_test_assignment(eng, rater: str) -> list[str]:
+    """Return the test rater's set, creating the default (different domains) if missing."""
+    cur = get_assignment(eng, rater)
+    if cur:
+        return cur
+    from test_sets import default_sets  # local import: avoid cycle
+    pool = test_pool(eng)
+    if pool.empty:
+        return []
+    sets = default_sets(pool)
+    for r, vids in sets.items():
+        if not get_assignment(eng, r):
+            set_assignment(eng, r, vids, "system")
+    return get_assignment(eng, rater)

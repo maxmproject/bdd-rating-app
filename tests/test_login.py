@@ -60,3 +60,19 @@ def test_rater_login_reaches_form(tmp_path, users):
     at = _login(_app(tmp_path, users), "klampu", "secret1")
     assert not at.exception
     assert at.session_state["user"]["rater"] == "A"
+
+
+def test_test_account_sees_only_its_10(tmp_path):
+    import db
+    from config import TEST_AREAS
+    areas = [a for v in TEST_AREAS.values() for a in v]
+    rows = [(f"V-{i:03d}", "x", "หลัก", c, "", a) for i, (a, c) in enumerate(
+        ((a, c) for a in areas for c in ("BDD-positive", "BDD-negative") for _ in range(4)), 1)]
+    import pandas as pd
+    eng = db.get_engine(f"sqlite:///{tmp_path/'t.db'}")
+    db.upsert_vignettes(eng, pd.DataFrame(rows, columns=["vid", "text", "set_role", "cls",
+                                                         "stratum_code", "area"]), "pi")
+    users = {"test1": {"name": "t", "role": "rater", "rater": "T1", "password_hash": H}}
+    at = _login(_app(tmp_path, users), "test1", "secret1")
+    assert not at.exception
+    assert at.sidebar.metric[0].value == "0 / 10"
