@@ -12,7 +12,7 @@ import streamlit as st
 import db
 import pi_view
 import rater_view
-from auth import verify
+from auth import hash_problem, verify
 from config import APP_DATE, APP_VERSION, RATERS, TEST_RATERS
 
 st.set_page_config(page_title="BDD Vignette Rating", page_icon="📝", layout="wide")
@@ -26,8 +26,27 @@ def _secrets() -> dict:
 
 
 SEC = _secrets()
-DB_URL = SEC.get("DATABASE_URL") or os.environ.get("DATABASE_URL") or "sqlite:///rating.db"
-USERS = {k: dict(v) for k, v in SEC.get("users", {}).items()}
+DB_URL = (SEC.get("DATABASE_URL") or os.environ.get("DATABASE_URL") or "sqlite:///rating.db").strip()
+# usernames are matched case-insensitively and without surrounding spaces
+# (mobile keyboards often capitalise the first letter)
+USERS = {str(k).strip().lower(): {kk: (vv.strip() if isinstance(vv, str) else vv)
+                                  for kk, vv in dict(v).items()}
+         for k, v in SEC.get("users", {}).items()}
+
+
+def _startup_report():
+    """Printed once to the Streamlit Cloud log (Manage app → logs). No secrets are printed."""
+    print(f"[rating-app] secrets keys: {sorted(SEC.keys())}", flush=True)
+    print(f"[rating-app] users loaded: {len(USERS)}", flush=True)
+    for name, info in USERS.items():
+        prob = hash_problem(info.get("password_hash"))
+        print(f"[rating-app]  - {name}: role={info.get('role')!r} rater={info.get('rater')!r} "
+              f"hash={'OK' if not prob else 'BAD: ' + prob}", flush=True)
+
+
+if "_reported" not in st.session_state:
+    _startup_report()
+    st.session_state["_reported"] = True
 
 
 @st.cache_resource
@@ -44,14 +63,29 @@ def login():
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.form_submit_button("เข้าสู่ระบบ", type="primary"):
-            info = USERS.get(u.strip())
-            if info and verify(p, info.get("password_hash", "")):
-                st.session_state.user = {"username": u.strip(), **info}
-                with db.Session(engine(DB_URL)) as s:
-                    db.log(s, u.strip(), "login")
-                    s.commit()
+            name = u.strip().lower()
+            info = USERS.get(name)
+            if info is None:
+                st.error(f"ไม่พบ username นี้ (ตั้งค่าไว้ {len(USERS)} บัญชี) "
+                         "ตรวจตัวสะกด หรือชื่อหัวข้อ [users.xxx] ใน Secrets")
+            elif hash_problem(info.get("password_hash")):
+                st.error("password_hash ของบัญชีนี้ใน Secrets รูปแบบไม่ถูกต้อง: "
+                         f"{hash_problem(info.get('password_hash'))}")
+            elif not verify(p, info["password_hash"]):
+                st.error("Password ไม่ถูกต้อง")
+            else:
+                st.session_state.user = {"username": name, **info}
+                try:
+                    with db.Session(engine(DB_URL)) as s:
+                        db.log(s, name, "login")
+                        s.commit()
+                except Exception as e:  # noqa: BLE001
+                    st.session_state.pop("user", None)
+                    st.error(f"Password ถูกต้อง แต่เชื่อมต่อฐานข้อมูลไม่ได้: {type(e).__name__} "
+                             "ตรวจ DATABASE_URL ใน Secrets (ดูรายละเอียดใน logs)")
+                    print(f"[rating-app] DB error: {e!r}", flush=True)
+                    st.stop()
                 st.rerun()
-            st.error("Username หรือ password ไม่ถูกต้อง")
     st.caption(f"{APP_VERSION} · {APP_DATE} · ข้อมูลทั้งหมดเป็น vignette สังเคราะห์ ไม่มีข้อมูลผู้ป่วยจริง")
 
 
