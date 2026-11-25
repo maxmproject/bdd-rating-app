@@ -5,15 +5,39 @@ Config:        .streamlit/secrets.toml  (see secrets.toml.example)
 """
 from __future__ import annotations
 
+import importlib
 import os
+import sys
+from pathlib import Path
 
 import streamlit as st
 
-import db
-import pi_view
-import rater_view
-from auth import hash_problem, verify
-from config import APP_DATE, APP_VERSION, RATERS, TEST_RATERS
+# --- keep local modules consistent after a redeploy -------------------------------
+# Streamlit re-imports only the files that changed; an unchanged module (e.g. rater_view)
+# keeps its reference to the OLD version of a changed one (e.g. db), so new code is
+# silently not used. When any local file changes we reload all of them in dependency order.
+_HERE = Path(__file__).resolve().parent
+_LOCAL = ["config", "auth", "stats_kappa", "db", "test_sets", "analysis",
+          "rater_view", "pi_view"]
+
+
+def _local_signature():
+    return tuple((m, (_HERE / f"{m}.py").stat().st_mtime_ns)
+                 for m in _LOCAL if (_HERE / f"{m}.py").exists())
+
+
+_sig = _local_signature()
+if getattr(sys, "_bdd_rating_sig", None) not in (None, _sig):
+    for _m in _LOCAL:
+        if _m in sys.modules:
+            importlib.reload(sys.modules[_m])
+sys._bdd_rating_sig = _sig
+
+import db  # noqa: E402
+import pi_view  # noqa: E402
+import rater_view  # noqa: E402
+from auth import hash_problem, verify  # noqa: E402
+from config import APP_DATE, APP_VERSION, RATERS, TEST_RATERS  # noqa: E402
 
 st.set_page_config(page_title="BDD Vignette Rating", page_icon="📝", layout="wide")
 

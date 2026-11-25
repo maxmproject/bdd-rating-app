@@ -96,3 +96,19 @@ def test_pi_page_renders_with_test_sets(tmp_path):
     btn = [b for b in at.button if b.label == "สร้างไฟล์ Excel ของบัญชีทดสอบ"][0]
     at = btn.click().run()
     assert not at.exception
+
+
+def test_stale_module_reference_is_refreshed(tmp_path, users):
+    """After a redeploy an unchanged module (rater_view) must not keep the old db module."""
+    import sys
+    at = _app(tmp_path, users)
+    assert not at.exception
+    # what Streamlit does on redeploy: drops the changed module (db) only
+    old_db = sys.modules.pop("db")
+    assert sys.modules["rater_view"].db is old_db             # stale reference
+    sys._bdd_rating_sig = ("pretend", "files changed")
+    at = _app(tmp_path, users)
+    assert not at.exception
+    assert sys.modules["db"] is not old_db
+    assert sys.modules["rater_view"].db is sys.modules["db"]   # refreshed
+    assert sys.modules["pi_view"].db is sys.modules["db"]
