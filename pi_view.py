@@ -121,27 +121,24 @@ def _progress_tab(eng, user, d, m):
 
 
 def _test_sets_editor(eng, user, m, sets):
-    with st.expander("ชุด vignette ของบัญชีทดสอบ (คนละ domain)"):
+    shared = sets[TEST_RATERS[0]]
+    with st.expander(f"ชุด vignette ของบัญชีทดสอบ (ใช้ชุดเดียวกันทุกบัญชี · {len(shared)} เรื่อง)"):
         bp = m.set_index("vid")
-        for r in TEST_RATERS:
-            v = [x for x in sets[r] if x in bp.index]
-            t = bp.loc[v, ["area", "cls"]].reset_index() if v else pd.DataFrame()
-            st.markdown(f"**{r}** · {len(v)} เรื่อง")
-            if not t.empty:
-                st.dataframe(t.groupby(["area", "cls"]).size().rename("n").reset_index(),
-                             hide_index=True)
-            new = st.multiselect(f"แก้ชุดของ {r}", m.vid.tolist(), default=v, key=f"set_{r}")
-            if st.button(f"บันทึกชุดของ {r}", key=f"save_set_{r}", disabled=sorted(new) == v):
-                db.set_assignment(eng, r, new, user["username"])
-                st.rerun()
-        overlap = set(sets[TEST_RATERS[0]]) & set(sets[TEST_RATERS[1]])
-        st.caption(f"เรื่องที่ซ้ำกันระหว่าง T1 และ T2: {len(overlap)} "
-                   "(ถ้าไม่มีเรื่องซ้ำ จะคำนวณ κ ของ T1 vs T2 ไม่ได้)")
+        v = [x for x in shared if x in bp.index]
+        if v:
+            t = bp.loc[v, ["area", "cls"]].reset_index()
+            st.dataframe(t.groupby(["area", "cls"]).size().rename("n").reset_index(),
+                         hide_index=True)
+        new = st.multiselect("แก้ชุด (มีผลกับทุกบัญชีทดสอบ)", m.vid.tolist(), default=v,
+                             key="set_shared")
+        if st.button("บันทึกชุด", key="save_set_shared", disabled=sorted(new) == v):
+            db.set_shared_assignment(eng, new, user["username"])
+            st.rerun()
         seed = st.number_input("seed สำหรับสุ่มชุดใหม่", value=20261122, step=1)
-        if st.button("สุ่มชุดใหม่ตาม domain เริ่มต้น"):
-            from test_sets import default_sets
-            for r, vids in default_sets(db.test_pool(eng), int(seed)).items():
-                db.set_assignment(eng, r, vids, user["username"])
+        if st.button("สุ่มชุดใหม่ (20 เรื่อง ครบทุก domain, BDD+ 10 : BDD− 10)"):
+            from test_sets import shared_default
+            db.set_shared_assignment(eng, shared_default(db.test_pool(eng), int(seed)),
+                                     user["username"])
             st.rerun()
 
 
@@ -157,7 +154,7 @@ def _agreement_tab(d, m):
             st.info("ยังไม่มี vignette")
             return
         m = analysis.merged(d, tuple(TEST_RATERS))
-        st.caption("ผลจากบัญชีทดสอบ ใช้ตรวจว่าระบบทำงานถูกต้องเท่านั้น ไม่ถูก export")
+        st.caption("ผลจากบัญชีทดสอบ ใช้ตรวจว่าระบบทำงานถูกต้องเท่านั้น ไม่รวมใน export ข้อมูลจริง")
     if m.empty or not m.both_rated.any():
         st.info("ยังไม่มีเรื่องที่ประเมินครบทั้งสองคน")
         return
@@ -280,4 +277,13 @@ def _export_tab(eng):
         data = analysis.build_export(eng)
         st.download_button("ดาวน์โหลด", data,
                            file_name=f"BDD_rating_export_{datetime.now():%Y%m%d_%H%M}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    st.divider()
+    st.markdown("**🧪 แบบประเมินของบัญชีทดสอบ (test1, test2)** · แยกไฟล์จากข้อมูลจริง: "
+                "Summary, Test_T1, Test_T2, Compare")
+    if st.button("สร้างไฟล์ Excel ของบัญชีทดสอบ"):
+        data = analysis.build_test_export(eng)
+        st.download_button("ดาวน์โหลด (บัญชีทดสอบ)", data,
+                           file_name=f"BDD_rating_TEST_{datetime.now():%Y%m%d_%H%M}.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

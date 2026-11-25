@@ -33,16 +33,60 @@ def test_default_sets_properties():
     assert default_sets(pool) == sets and default_sets(pool, seed=1) != sets
 
 
-def test_ensure_assignment_and_rater_filter(tmp_path):
+def _db_with_pool(tmp_path, per=3):
     eng = db.get_engine(f"sqlite:///{tmp_path/'t.db'}")
-    pool = _pool(3)
-    df = pool.assign(text="x", set_role="หลัก", stratum_code="", cls=pool.cls)
+    pool = _pool(per)
+    df = pool.assign(text="x", set_role="หลัก", stratum_code="")
     db.upsert_vignettes(eng, df[["vid", "text", "set_role", "cls", "stratum_code", "area"]], "pi")
+    return eng, pool
+
+
+def test_shared_set_default(tmp_path):
+    eng, pool = _db_with_pool(tmp_path)
     t1 = db.ensure_test_assignment(eng, "T1")
-    t2 = db.get_assignment(eng, "T2")
-    assert len(t1) == len(t2) == TEST_N and set(t1).isdisjoint(t2)
-    db.set_assignment(eng, "T1", t1[:3], "pi")
-    assert db.ensure_test_assignment(eng, "T1") == t1[:3]          # PI edit is kept
+    assert t1 == db.get_assignment(eng, "T2")                      # identical sets
+    assert len(t1) == 2 * TEST_N
+    p = pool.set_index("vid")
+    assert (p.loc[t1, "cls"] == "BDD-positive").sum() == TEST_N
+    assert set(p.loc[t1, "area"]) == set(AREAS)                      # every domain
+
+
+def test_migration_from_disjoint_keeps_ratings(tmp_path):
+    """Old V1.2 state: T1/T2 had different 10s and some ratings -> both get the same 20."""
+    eng, pool = _db_with_pool(tmp_path)
+    old = default_sets(db.test_pool(eng))
+    for r, vids in old.items():
+        db.set_assignment(eng, r, vids, "old")
+    rate = dict(crit_a=False, crit_b=False, crit_c=False, crit_d=True, label="Non-BDD",
+                insight="", confidence=3, note="")
+    db.save_rating(eng, "T1", old["T1"][0], rate, "T1")
+    shared = db.ensure_test_assignment(eng, "T2")
+    assert shared == sorted(old["T1"] + old["T2"])
+    assert db.get_assignment(eng, "T1") == db.get_assignment(eng, "T2") == shared
+    assert old["T1"][0] in db.get_ratings(eng, "T1")                 # rating kept
+    db.set_shared_assignment(eng, shared[:5], "pi")
+    assert db.ensure_test_assignment(eng, "T1") == shared[:5]        # PI edit is kept
+
+
+def test_test_export(tmp_path):
+    import io
+    import openpyxl
+    import analysis
+    eng, _ = _db_with_pool(tmp_path)
+    shared = db.ensure_test_assignment(eng)
+    rate = dict(crit_a=True, crit_b=True, crit_c=True, crit_d=True, label="BDD",
+                insight="poor", confidence=4, note="t")
+    for vid in shared[:3]:
+        db.save_rating(eng, "T1", vid, rate, "T1")
+        db.save_rating(eng, "T2", vid, dict(rate, label="Non-BDD", insight=""), "T2")
+    db.save_rating(eng, "A", shared[0], rate, "A")                    # real data must not leak
+    wb = openpyxl.load_workbook(io.BytesIO(analysis.build_test_export(eng)))
+    assert wb.sheetnames == ["Summary", "Test_T1", "Test_T2", "Compare"]
+    t1 = list(wb["Test_T1"].iter_rows(values_only=True))
+    assert len(t1) == 1 + len(shared)
+    assert sum(r[6] == "BDD" for r in t1[1:]) == 3
+    cmp_ = list(wb["Compare"].iter_rows(values_only=True))
+    assert sum(r[5] == 0 for r in cmp_[1:]) == 3
 
 
 @pytest.mark.skipif(not Path("/mnt/project-files/protocol/BDD_vignettes_full_20261122_V3_claude.xlsx").exists(),

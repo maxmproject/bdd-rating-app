@@ -288,17 +288,26 @@ def test_pool(eng) -> "pd.DataFrame":
     return pd.DataFrame(rows, columns=["vid", "area", "cls"])
 
 
-def ensure_test_assignment(eng, rater: str) -> list[str]:
-    """Return the test rater's set, creating the default (different domains) if missing."""
-    cur = get_assignment(eng, rater)
-    if cur:
-        return cur
-    from test_sets import default_sets  # local import: avoid cycle
-    pool = test_pool(eng)
-    if pool.empty:
-        return []
-    sets = default_sets(pool)
-    for r, vids in sets.items():
-        if not get_assignment(eng, r):
-            set_assignment(eng, r, vids, "system")
-    return get_assignment(eng, rater)
+def ensure_test_assignment(eng, rater: str | None = None) -> list[str]:
+    """All test accounts share ONE set. The shared set is the union of whatever is
+    assigned now (so the old 10 + 10 per-domain sets become the same 20 for both,
+    and ratings already made are kept); if nothing is assigned yet, the default is used."""
+    from config import TEST_RATERS            # local imports: avoid cycles
+    from test_sets import shared_default
+    current = {r: get_assignment(eng, r) for r in TEST_RATERS}
+    shared = sorted(set().union(*map(set, current.values())))
+    if not shared:
+        pool = test_pool(eng)
+        if pool.empty:
+            return []
+        shared = shared_default(pool)
+    for r, cur in current.items():
+        if cur != shared:
+            set_assignment(eng, r, shared, "system")
+    return shared
+
+
+def set_shared_assignment(eng, vids: list[str], user: str):
+    from config import TEST_RATERS
+    for r in TEST_RATERS:
+        set_assignment(eng, r, vids, user)

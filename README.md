@@ -1,4 +1,4 @@
-# BDD Vignette Rating App (V1.2 · 2026-11-22)
+# BDD Vignette Rating App (V1.3 · 2026-11-25)
 
 Web app ให้จิตแพทย์ 2 คน label vignette สังเคราะห์แบบ blind และแยกกันตามเกณฑ์ DSM-5-TR A–D
 แทนชีต Rater_A / Rater_B / Kappa ใน `BDD_vignette_templates_20261122_V1_claude.xlsx`
@@ -9,7 +9,7 @@ Web app ให้จิตแพทย์ 2 คน label vignette สังเ�
 |---|---|
 | `rater` (A, B) | ID + ข้อความ vignette เท่านั้น (ไม่เห็น class/stratum/ผลของอีกคน) · ลำดับสุ่มแยกต่อคน (seed คงที่) · แก้ได้จน lock |
 | `pi` | นำเข้า vignette, ความคืบหน้า, κ + 95% CI, consensus, เลือกชุด 150, export Excel |
-| `rater` (T1, T2) · บัญชีทดสอบ | เหมือน rater จริง แต่ผลเก็บแยก (rater code T1/T2) ไม่ถูกนำไปคำนวณ κ, consensus หรือ export · แต่ละบัญชีเห็นเฉพาะชุดของตัวเอง **10 เรื่อง คนละ domain ไม่ซ้ำกัน** (ค่าเริ่มต้น T1 = จมูก + ใบหน้า/ผิว, T2 = ตา/หนังตา + หน้าอก/รูปร่าง + อื่น ๆ; BDD+ 5 : BDD− 5; สร้างอัตโนมัติเมื่อ login ครั้งแรก) · PI ดู/แก้/สุ่มชุดใหม่ได้ในแท็บความคืบหน้า และกด "ล้างข้อมูลทดสอบ" |
+| `rater` (T1, T2) · บัญชีทดสอบ | เหมือน rater จริง แต่ผลเก็บแยก (rater code T1/T2) ไม่ถูกนำไปคำนวณ κ, consensus หรือ export · ทั้งสองบัญชีประเมิน **ชุดเดียวกัน 20 เรื่อง** ครบทุก domain (BDD+ 10 : BDD− 10; ลำดับสุ่มแยกต่อบัญชี) · PI ดู/แก้/สุ่มชุดใหม่ได้ในแท็บความคืบหน้า, export แบบประเมินของบัญชีทดสอบเป็น Excel แยกไฟล์ได้ในแท็บ Export และกด "ล้างข้อมูลทดสอบ" ได้ |
 
 
 ใช้งานจริง 5 บัญชี: `pi`, `rater_a`, `rater_b` (ข้อมูลจริง) + `test1`, `test2` (ทดสอบ) — ดู `.streamlit/secrets.toml.example`
