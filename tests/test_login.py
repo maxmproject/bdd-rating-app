@@ -62,7 +62,7 @@ def test_rater_login_reaches_form(tmp_path, users):
     assert at.session_state["user"]["rater"] == "A"
 
 
-def test_test_account_sees_only_its_10(tmp_path):
+def test_test_account_sees_shared_20(tmp_path):
     import db
     from config import TEST_AREAS
     areas = [a for v in TEST_AREAS.values() for a in v]
@@ -75,4 +75,24 @@ def test_test_account_sees_only_its_10(tmp_path):
     users = {"test1": {"name": "t", "role": "rater", "rater": "T1", "password_hash": H}}
     at = _login(_app(tmp_path, users), "test1", "secret1")
     assert not at.exception
-    assert at.sidebar.metric[0].value == "0 / 10"
+    assert at.sidebar.metric[0].value == "0 / 20"
+
+
+def test_pi_page_renders_with_test_sets(tmp_path):
+    import pandas as pd
+    import db
+    from config import TEST_AREAS
+    areas = [a for v in TEST_AREAS.values() for a in v]
+    rows = [(f"V-{i:03d}", "x", "หลัก", c, "", a) for i, (a, c) in enumerate(
+        ((a, c) for a in areas for c in ("BDD-positive", "BDD-negative") for _ in range(4)), 1)]
+    eng = db.get_engine(f"sqlite:///{tmp_path/'t.db'}")
+    db.upsert_vignettes(eng, pd.DataFrame(rows, columns=["vid", "text", "set_role", "cls",
+                                                         "stratum_code", "area"]), "pi")
+    users = {"pi": {"name": "PI", "role": "pi", "password_hash": H}}
+    at = _login(_app(tmp_path, users), "pi", "secret1")
+    assert not at.exception
+    labels = [b.label for b in at.button]
+    assert "สร้างไฟล์ Excel ของบัญชีทดสอบ" in labels
+    btn = [b for b in at.button if b.label == "สร้างไฟล์ Excel ของบัญชีทดสอบ"][0]
+    at = btn.click().run()
+    assert not at.exception

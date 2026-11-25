@@ -167,3 +167,42 @@ def build_export(eng, n_boot: int = 2000) -> bytes:
                 ws.column_dimensions[col[0].column_letter].width = width
             ws.oddFooter.left.text = f"BDD rating export {APP_VERSION} · {ts}"
     return buf.getvalue()
+
+
+def build_test_export(eng) -> bytes:
+    """Excel of the test accounts' rating forms only (never mixed with real data)."""
+    from config import TEST_RATERS
+    d = load_all(eng)
+    shared = db.ensure_test_assignment(eng)
+    m = merged(d, tuple(TEST_RATERS))
+    m = m[m.vid.isin(shared)].reset_index(drop=True)
+    t1, t2 = TEST_RATERS
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    both = m[m.both_rated]
+    summary = pd.DataFrame([
+        ["ไฟล์", f"แบบประเมินบัญชีทดสอบ ({t1}, {t2}) · ไม่ใช่ข้อมูลวิจัย"],
+        ["โปรแกรม", f"BDD vignette rating app {APP_VERSION} ({APP_DATE})"],
+        ["Export เมื่อ", ts],
+        ["จำนวน vignette ในชุดทดสอบ", len(m)],
+        [f"ประเมินแล้ว {t1}", int(m.label_A.notna().sum())],
+        [f"ประเมินแล้ว {t2}", int(m.label_B.notna().sum())],
+        ["ประเมินครบทั้งสองบัญชี", len(both)],
+        ["label ตรงกัน", int((both.label_A == both.label_B).sum())],
+    ], columns=["รายการ", "ค่า"])
+    cmp_ = m[["vid", "area", "cls", "label_A", "label_B"]].copy()
+    cmp_["agree"] = np.where(m.both_rated, (m.label_A == m.label_B).astype(float), np.nan)
+    cmp_["agree"] = cmp_["agree"].astype("Int64")
+    cmp_.columns = ["ID", "บริเวณ", "Class (blueprint)", f"{t1} label", f"{t2} label",
+                    "ตรงกัน (1/0)"]
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+        summary.to_excel(xw, sheet_name="Summary", index=False)
+        _naive(_rater_sheet(m, "A")).to_excel(xw, sheet_name=f"Test_{t1}", index=False)
+        _naive(_rater_sheet(m, "B")).to_excel(xw, sheet_name=f"Test_{t2}", index=False)
+        cmp_.to_excel(xw, sheet_name="Compare", index=False)
+        for ws in xw.book.worksheets:
+            for col in ws.columns:
+                width = min(60, max(10, max(len(str(c.value or "")) for c in col[:50]) + 2))
+                ws.column_dimensions[col[0].column_letter].width = width
+            ws.oddFooter.left.text = f"BDD rating TEST export {APP_VERSION} · {ts}"
+    return buf.getvalue()

@@ -1,5 +1,8 @@
 """Default vignette subsets for test accounts (T1/T2).
 
+Since V1.3 both test accounts share ONE set (shared_default = union of the two
+per-domain sets below, 20 vignettes).
+
 Each test rater gets TEST_N vignettes from its own concern areas (domains), so the two
 sets never overlap and cover different domains; within each set BDD+/BDD- are balanced
 and spread round-robin across that rater's areas. Deterministic (seed)."""
@@ -34,3 +37,9 @@ def default_sets(pool: pd.DataFrame, seed: int = 20261122,
                         need -= 1
         out[rater] = sorted(picks)
     return out
+
+
+def shared_default(pool: pd.DataFrame, seed: int = 20261122) -> list[str]:
+    """One set for *all* test accounts: union of the per-domain sets above
+    (10 + 10 = 20 vignettes covering every domain, 10 BDD+ : 10 BDD-)."""
+    return sorted(v for vids in default_sets(pool, seed).values() for v in vids)
