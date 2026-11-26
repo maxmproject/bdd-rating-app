@@ -111,6 +111,9 @@ def _progress_tab(eng, user, d, m):
         n = int(((rat.rater == r) & rat.vid.isin(sets[r])).sum()) if not rat.empty else 0
         c.metric(f"Test {r}", f"{n} / {len(sets[r])}")
         c.caption("🔒 lock แล้ว" if locks.get(r) else "ยังไม่ lock")
+        if locks.get(r) and c.button(f"ปลด lock {r}", key=f"unlock_test_{r}"):
+            db.set_lock(eng, r, False, user["username"], "test account")
+            st.rerun()
     with tcols[-1]:
         ok = st.checkbox("ยืนยันล้างผลของบัญชีทดสอบทั้งหมด", key="confirm_clear_test")
         if st.button("ล้างข้อมูลทดสอบ", disabled=not ok):

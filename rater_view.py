@@ -35,6 +35,11 @@ def render(eng, user: dict):
     ratings = db.get_ratings(eng, rater)
     done = [v for v in order if v in ratings]
     locked = db.is_locked(eng, rater)
+    if locked and rater in TEST_RATERS and len(done) < len(order):
+        # test set grew after the account was locked (e.g. 10 -> 20): reopen it.
+        # Real raters (A/B) are never auto-unlocked.
+        db.set_lock(eng, rater, False, "system", "test set has unrated vignettes")
+        locked = False
 
     # ---- sidebar: progress + navigation ----
     ss = st.session_state
