@@ -1,7 +1,7 @@
 """Shared constants (match Rater_A/B sheets in BDD_vignette_templates_20261122_V1_claude.xlsx)."""
 
-APP_VERSION = "V1.3.1"
-APP_DATE = "2026-11-25"
+APP_VERSION = "V1.3.2"
+APP_DATE = "2026-11-26"
 
 CATS = ["BDD", "Non-BDD", "ข้อมูลไม่พอ"]
 CATS2 = ["BDD", "Non-BDD"]

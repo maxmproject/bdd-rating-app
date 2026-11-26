@@ -112,3 +112,39 @@ def test_stale_module_reference_is_refreshed(tmp_path, users):
     assert sys.modules["db"] is not old_db
     assert sys.modules["rater_view"].db is sys.modules["db"]   # refreshed
     assert sys.modules["pi_view"].db is sys.modules["db"]
+
+
+def _seed_vignettes(tmp_path):
+    import pandas as pd
+    import db
+    from config import TEST_AREAS
+    areas = [a for v in TEST_AREAS.values() for a in v]
+    rows = [(f"V-{i:03d}", "x", "หลัก", c, "", a) for i, (a, c) in enumerate(
+        ((a, c) for a in areas for c in ("BDD-positive", "BDD-negative") for _ in range(4)), 1)]
+    eng = db.get_engine(f"sqlite:///{tmp_path/'t.db'}")
+    db.upsert_vignettes(eng, pd.DataFrame(rows, columns=["vid", "text", "set_role", "cls",
+                                                         "stratum_code", "area"]), "pi")
+    return eng
+
+
+def test_locked_test_account_reopens_when_set_grows(tmp_path):
+    """V1.2 -> V1.3: test1 had locked after 10; the shared set is now 20 -> must be able to submit."""
+    import db
+    from test_sets import default_sets
+    eng = _seed_vignettes(tmp_path)
+    old = default_sets(db.test_pool(eng))
+    for r, vids in old.items():
+        db.set_assignment(eng, r, vids, "old")
+    rate = dict(crit_a=False, crit_b=False, crit_c=False, crit_d=True, label="Non-BDD",
+                insight="", confidence=3, note="")
+    for v in old["T1"]:
+        db.save_rating(eng, "T1", v, rate, "T1")
+    db.set_lock(eng, "T1", True, "T1")
+    db.set_lock(eng, "A", True, "A")
+    users = {"test1": {"name": "t", "role": "rater", "rater": "T1", "password_hash": H}}
+    at = _login(_app(tmp_path, users), "test1", "secret1")
+    assert not at.exception
+    assert at.sidebar.metric[0].value == "10 / 20"
+    assert not db.is_locked(eng, "T1")
+    assert any(b.label.startswith("บันทึก") for b in at.button)       # submit button is back
+    assert db.is_locked(eng, "A")                                       # real rater untouched
