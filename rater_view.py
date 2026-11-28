@@ -95,7 +95,7 @@ def render(eng, user: dict):
     if label == "BDD":
         insight = st.radio("Insight", INSIGHT, horizontal=True, key=f"{vid}_ins",
                            index=INSIGHT.index(old.insight) if old and old.insight in INSIGHT else None)
-    note = st.text_area("หมายเหตุ (ถ้ามี)", value=old.note if old else "", key=f"{vid}_note",
+    note = st.text_area("ความเห็นของผู้ประเมิน / หมายเหตุ (ถ้ามี)", value=old.note if old else "", key=f"{vid}_note",
                         height=80)
 
     # consistency between criteria and label

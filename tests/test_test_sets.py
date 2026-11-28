@@ -78,15 +78,34 @@ def test_test_export(tmp_path):
                 insight="poor", confidence=4, note="t")
     for vid in shared[:3]:
         db.save_rating(eng, "T1", vid, rate, "T1")
-        db.save_rating(eng, "T2", vid, dict(rate, label="Non-BDD", insight=""), "T2")
+        db.save_rating(eng, "T2", vid, dict(rate, label="Non-BDD", insight="", note="t2"), "T2")
     db.save_rating(eng, "A", shared[0], rate, "A")                    # real data must not leak
     wb = openpyxl.load_workbook(io.BytesIO(analysis.build_test_export(eng)))
-    assert wb.sheetnames == ["Summary", "Test_T1", "Test_T2", "Compare"]
+    assert wb.sheetnames == ["Summary"] + [f"Test_T{i}" for i in range(1, 6)] + ["Compare"]
     t1 = list(wb["Test_T1"].iter_rows(values_only=True))
     assert len(t1) == 1 + len(shared)
+    assert "ความเห็นของผู้ประเมิน (หมายเหตุ)" in t1[0]
+    ci = t1[0].index("ความเห็นของผู้ประเมิน (หมายเหตุ)")
     assert sum(r[6] == "BDD" for r in t1[1:]) == 3
+    assert sum(r[ci] == "t" for r in t1[1:]) == 3
+    t3 = list(wb["Test_T3"].iter_rows(values_only=True))
+    assert len(t3) == 1 + len(shared) and all(r[6] is None for r in t3[1:])
     cmp_ = list(wb["Compare"].iter_rows(values_only=True))
-    assert sum(r[5] == 0 for r in cmp_[1:]) == 3
+    h = list(cmp_[0])
+    for i in range(1, 6):
+        assert f"T{i} label" in h and f"T{i} ความเห็น" in h
+    ag = h.index("ตรงกันทุกบัญชีที่ประเมิน (1/0)")
+    assert sum(r[ag] == 0 for r in cmp_[1:]) == 3
+    assert sum(r[h.index("T2 ความเห็น")] == "t2" for r in cmp_[1:]) == 3
+    assert "A" not in {r[0] for r in t1}                               # sanity
+
+
+def test_t3_t5_share_set(tmp_path):
+    eng, _ = _db_with_pool(tmp_path)
+    shared = db.ensure_test_assignment(eng)
+    assert len(shared) == 20
+    for r in ("T1", "T2", "T3", "T4", "T5"):
+        assert db.get_assignment(eng, r) == shared
 
 
 @pytest.mark.skipif(not Path("/mnt/project-files/protocol/BDD_vignettes_full_20261122_V3_claude.xlsx").exists(),

@@ -12,7 +12,7 @@ Web app ให้จิตแพทย์ 2 คน label vignette สังเ�
 | `rater` (T1, T2) · บัญชีทดสอบ | เหมือน rater จริง แต่ผลเก็บแยก (rater code T1/T2) ไม่ถูกนำไปคำนวณ κ, consensus หรือ export · ทั้งสองบัญชีประเมิน **ชุดเดียวกัน 20 เรื่อง** ครบทุก domain (BDD+ 10 : BDD− 10; ลำดับสุ่มแยกต่อบัญชี) · PI ดู/แก้/สุ่มชุดใหม่ได้ในแท็บความคืบหน้า, export แบบประเมินของบัญชีทดสอบเป็น Excel แยกไฟล์ได้ในแท็บ Export และกด "ล้างข้อมูลทดสอบ" ได้ |
 
 
-ใช้งานจริง 5 บัญชี: `pi`, `rater_a`, `rater_b` (ข้อมูลจริง) + `test1`, `test2` (ทดสอบ) — ดู `.streamlit/secrets.toml.example`
+ใช้งานจริง 8 บัญชี: `pi`, `rater_a`, `rater_b` (ข้อมูลจริง) + `test1`–`test5` (ทดสอบ, rater T1–T5, ชุด 20 เรื่องเดียวกัน, export Excel แยกพร้อมคอลัมน์ความเห็น) — ดู `.streamlit/secrets.toml.example`
 
 Blinding ทำฝั่ง server: หน้า rater ดึงข้อมูลผ่าน `db.vignettes_for_rater()` ซึ่งคืนแค่ `vid, text`
 
