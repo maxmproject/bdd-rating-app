@@ -11,6 +11,7 @@ import db
 from config import APP_DATE, APP_VERSION, CATS, CATS2, TARGET_PER_CLASS
 from stats_kappa import cohen_kappa
 
+NOTE_COL = "ความเห็นของผู้ประเมิน (หมายเหตุ)"
 RATER_COLS = ["vid", "crit_a", "crit_b", "crit_c", "crit_d", "label", "insight",
               "confidence", "note", "created_at", "updated_at", "n_edits"]
 
@@ -95,7 +96,7 @@ def _rater_sheet(m: pd.DataFrame, r: str) -> pd.DataFrame:
     for k in "abcd":
         s[f"crit_{k}_{r}"] = s[f"crit_{k}_{r}"].map(tick)
     s.columns = ["ID", "Vignette", "A", "B", "C", "D", "Label",
-                 "Insight (ถ้า BDD)", "Confidence 1–5", "หมายเหตุ", "บันทึกครั้งแรก (UTC)",
+                 "Insight (ถ้า BDD)", "Confidence 1–5", NOTE_COL, "บันทึกครั้งแรก (UTC)",
                  "แก้ไขล่าสุด (UTC)", "จำนวนครั้งที่แก้"]
     return s
 
@@ -170,35 +171,57 @@ def build_export(eng, n_boot: int = 2000) -> bytes:
 
 
 def build_test_export(eng) -> bytes:
-    """Excel of the test accounts' rating forms only (never mixed with real data)."""
+    """Excel of the test accounts' rating forms only (never mixed with real data).
+
+    One sheet per test account (incl. the rater's own comment column) + Compare
+    (label and comment of every test account side by side).
+    """
     from config import TEST_RATERS
     d = load_all(eng)
     shared = db.ensure_test_assignment(eng)
-    m = merged(d, tuple(TEST_RATERS))
-    m = m[m.vid.isin(shared)].reset_index(drop=True)
-    t1, t2 = TEST_RATERS
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    both = m[m.both_rated]
-    summary = pd.DataFrame([
-        ["ไฟล์", f"แบบประเมินบัญชีทดสอบ ({t1}, {t2}) · ไม่ใช่ข้อมูลวิจัย"],
-        ["โปรแกรม", f"BDD vignette rating app {APP_VERSION} ({APP_DATE})"],
-        ["Export เมื่อ", ts],
-        ["จำนวน vignette ในชุดทดสอบ", len(m)],
-        [f"ประเมินแล้ว {t1}", int(m.label_A.notna().sum())],
-        [f"ประเมินแล้ว {t2}", int(m.label_B.notna().sum())],
-        ["ประเมินครบทั้งสองบัญชี", len(both)],
-        ["label ตรงกัน", int((both.label_A == both.label_B).sum())],
-    ], columns=["รายการ", "ค่า"])
-    cmp_ = m[["vid", "area", "cls", "label_A", "label_B"]].copy()
-    cmp_["agree"] = np.where(m.both_rated, (m.label_A == m.label_B).astype(float), np.nan)
-    cmp_["agree"] = cmp_["agree"].astype("Int64")
-    cmp_.columns = ["ID", "บริเวณ", "Class (blueprint)", f"{t1} label", f"{t2} label",
-                    "ตรงกัน (1/0)"]
+    sheets, n_done = {}, {}
+    cmp_ = None
+    for r in TEST_RATERS:
+        # merged() with pair (r, r) puts this rater's columns in *_A
+        m = merged(d, (r, r))
+        m = m[m.vid.isin(shared)].reset_index(drop=True)
+        sheets[r] = _rater_sheet(m, "A")
+        n_done[r] = int(m.label_A.notna().sum())
+        if cmp_ is None:
+            cmp_ = m[["vid", "area", "cls"]].copy()
+            cmp_.columns = ["ID", "บริเวณ", "Class (blueprint)"]
+        cmp_[f"{r} label"] = m.label_A.values
+        cmp_[f"{r} ความเห็น"] = m.note_A.fillna("").values
+    labs = cmp_[[f"{r} label" for r in TEST_RATERS]]
+    n_rated = labs.notna().sum(axis=1)
+    cmp_["จำนวนบัญชีที่ประเมิน"] = n_rated
+    # all raters who rated gave the same label (needs >= 2 ratings)
+    same = labs.apply(lambda row: row.dropna().nunique() == 1, axis=1)
+    cmp_["ตรงกันทุกบัญชีที่ประเมิน (1/0)"] = pd.Series(
+        np.where(n_rated >= 2, same.astype(float), np.nan)).astype("Int64")
+    bp_lab = cmp_["Class (blueprint)"].map({"BDD-positive": "BDD", "BDD-negative": "Non-BDD"})
+    for r in TEST_RATERS:
+        ok = cmp_[f"{r} label"].notna() & bp_lab.notna()
+        cmp_.insert(cmp_.columns.get_loc(f"{r} ความเห็น") + 1, f"{r} ตรง blueprint (1/0)",
+                    pd.Series(np.where(ok, (cmp_[f"{r} label"] == bp_lab).astype(float),
+                                       np.nan)).astype("Int64"))
+    summary = pd.DataFrame(
+        [["ไฟล์", f"แบบประเมินบัญชีทดสอบ ({', '.join(TEST_RATERS)}) · ไม่ใช่ข้อมูลวิจัย"],
+         ["โปรแกรม", f"BDD vignette rating app {APP_VERSION} ({APP_DATE})"],
+         ["Export เมื่อ", ts],
+         ["จำนวน vignette ในชุดทดสอบ (ชุดเดียวกันทุกบัญชี)", len(cmp_)]]
+        + [[f"ประเมินแล้ว {r}", n_done[r]] for r in TEST_RATERS]
+        + [["ประเมินครบทุกบัญชี", int((n_rated == len(TEST_RATERS)).sum())],
+           ["label ตรงกันทุกบัญชี (เฉพาะเรื่องที่ประเมินครบทุกบัญชี)",
+            int((same & (n_rated == len(TEST_RATERS))).sum())],
+           ["คอลัมน์ความเห็น", f"ชีต Test_*: \"{NOTE_COL}\" · ชีต Compare: \"<บัญชี> ความเห็น\""]],
+        columns=["รายการ", "ค่า"])
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xw:
         summary.to_excel(xw, sheet_name="Summary", index=False)
-        _naive(_rater_sheet(m, "A")).to_excel(xw, sheet_name=f"Test_{t1}", index=False)
-        _naive(_rater_sheet(m, "B")).to_excel(xw, sheet_name=f"Test_{t2}", index=False)
+        for r in TEST_RATERS:
+            _naive(sheets[r]).to_excel(xw, sheet_name=f"Test_{r}", index=False)
         cmp_.to_excel(xw, sheet_name="Compare", index=False)
         for ws in xw.book.worksheets:
             for col in ws.columns:

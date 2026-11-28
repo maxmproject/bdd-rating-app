@@ -148,3 +148,34 @@ def test_locked_test_account_reopens_when_set_grows(tmp_path):
     assert not db.is_locked(eng, "T1")
     assert any(b.label.startswith("บันทึก") for b in at.button)       # submit button is back
     assert db.is_locked(eng, "A")                                       # real rater untouched
+
+
+def test_test5_and_pi_test_agreement(tmp_path):
+    import db
+    import pandas as pd
+    from config import TEST_AREAS
+    areas = [a for v in TEST_AREAS.values() for a in v]
+    rows = [(f"V-{i:03d}", "x", "หลัก", c, "", a) for i, (a, c) in enumerate(
+        ((a, c) for a in areas for c in ("BDD-positive", "BDD-negative") for _ in range(4)), 1)]
+    eng = db.get_engine(f"sqlite:///{tmp_path/'t.db'}")
+    db.upsert_vignettes(eng, pd.DataFrame(rows, columns=["vid", "text", "set_role", "cls",
+                                                         "stratum_code", "area"]), "pi")
+    shared = db.ensure_test_assignment(eng)
+    rate = dict(crit_a=True, crit_b=True, crit_c=True, crit_d=True, label="BDD",
+                insight="poor", confidence=4, note="c")
+    for vid in shared[:4]:
+        db.save_rating(eng, "T3", vid, rate, "T3")
+        db.save_rating(eng, "T5", vid, rate, "T5")
+    users = {"test5": {"name": "t5", "role": "rater", "rater": "T5", "password_hash": H},
+             "pi": {"name": "PI", "role": "pi", "password_hash": H}}
+    at = _login(_app(tmp_path, users), "test5", "secret1")
+    assert not at.exception
+    assert at.sidebar.metric[0].value == "4 / 20"
+    at = _login(_app(tmp_path, users), "pi", "secret1")
+    assert not at.exception
+    radio = next(r for r in at.radio if r.label == "ชุดข้อมูล")
+    at = radio.set_value(radio.options[1]).run()
+    at.selectbox(key="agr_t1").set_value("T3").run()
+    at = at.selectbox(key="agr_t2").set_value("T5").run()
+    assert not at.exception
+    assert any("ยังประเมินไม่ครบ" in w.value for w in at.warning)

@@ -151,12 +151,15 @@ def _fmt(x, nd=3):
 
 
 def _agreement_tab(d, m):
-    mode = st.radio("ชุดข้อมูล", ["ใช้จริง (A vs B)", "🧪 ทดสอบ (T1 vs T2)"], horizontal=True)
+    mode = st.radio("ชุดข้อมูล", ["ใช้จริง (A vs B)", "🧪 ทดสอบ (เลือก 2 บัญชี)"], horizontal=True)
     if mode.startswith("🧪"):
         if m.empty:
             st.info("ยังไม่มี vignette")
             return
-        m = analysis.merged(d, tuple(TEST_RATERS))
+        c1, c2 = st.columns(2)
+        t1 = c1.selectbox("บัญชีทดสอบ 1", TEST_RATERS, index=0, key="agr_t1")
+        t2 = c2.selectbox("บัญชีทดสอบ 2", [r for r in TEST_RATERS if r != t1], index=0, key="agr_t2")
+        m = analysis.merged(d, (t1, t2))
         st.caption("ผลจากบัญชีทดสอบ ใช้ตรวจว่าระบบทำงานถูกต้องเท่านั้น ไม่รวมใน export ข้อมูลจริง")
     if m.empty or not m.both_rated.any():
         st.info("ยังไม่มีเรื่องที่ประเมินครบทั้งสองคน")
@@ -283,8 +286,9 @@ def _export_tab(eng):
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     st.divider()
-    st.markdown("**🧪 แบบประเมินของบัญชีทดสอบ (test1, test2)** · แยกไฟล์จากข้อมูลจริง: "
-                "Summary, Test_T1, Test_T2, Compare")
+    st.markdown(f"**🧪 แบบประเมินของบัญชีทดสอบ ({', '.join(TEST_RATERS)})** · แยกไฟล์จากข้อมูลจริง: "
+                f"Summary, {', '.join('Test_' + r for r in TEST_RATERS)}, Compare "
+                "(มีคอลัมน์ความเห็นของผู้ประเมินทุกบัญชี)")
     if st.button("สร้างไฟล์ Excel ของบัญชีทดสอบ"):
         data = analysis.build_test_export(eng)
         st.download_button("ดาวน์โหลด (บัญชีทดสอบ)", data,
